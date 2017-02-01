@@ -137,14 +137,14 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
    *  only stops at known special characters. 
    */
   protected def prepareSpanParsers: Map[Char, Parser[Span]] = Map(
-    '*' -> (strong | em),   
-    '`' -> (inlineLiteral | phraseLinkRef | interpretedTextWithRoleSuffix),
-    '[' -> (footnoteRef | citationRef),
-    '|' -> substitutionRef,
-    '_' -> (internalTarget | simpleLinkRef),
-    ':' -> (interpretedTextWithRolePrefix | trim(uri)),
-    '@' -> trim(email),
-    '\\'-> (escapedChar ^^ (Text(_)))
+    '*' -> positioned(strong | em),
+    '`' -> positioned(inlineLiteral | phraseLinkRef | interpretedTextWithRoleSuffix),
+    '[' -> positioned(footnoteRef | citationRef),
+    '|' -> positioned(substitutionRef),
+    '_' -> positioned(internalTarget | simpleLinkRef),
+    ':' -> positioned(interpretedTextWithRolePrefix | trim(uri)),
+    '@' -> positioned(trim(email)),
+    '\\'-> positioned(escapedChar ^^ (Text(_)))
   )
 
   
@@ -161,13 +161,13 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#emphasis]]
    */
-  lazy val em: Parser[Emphasized] = span(not(lookBehind(2, '*')),"*" <~ not('*')) ^^ (Emphasized(_))
+  lazy val em: Parser[Emphasized] = positioned(span(not(lookBehind(2, '*')),"*" <~ not('*')) ^^ (Emphasized(_)))
   
   /** Parses a span of text with strong emphasis.
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#strong-emphasis]]
    */
-  lazy val strong: Parser[Strong] = span('*',"**") ^^ (Strong(_))
+  lazy val strong: Parser[Strong] = positioned(span('*',"**") ^^ (Strong(_)))
   
 
   private def span (start: Parser[Any], end: Parser[String]): Parser[List[Span]]
@@ -178,7 +178,7 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#inline-literals]].
    */
-  lazy val inlineLiteral: Parser[Literal] = markupStart('`', "``") ~> anyUntil(markupEnd("``")) ^^ (Literal(_))
+  lazy val inlineLiteral: Parser[Literal] = positioned(markupStart('`', "``") ~> anyUntil(markupEnd("``")) ^^ (Literal(_)))
   
   
   /** Represent a reference name.
@@ -227,33 +227,33 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#footnote-references]].
    */
-  lazy val footnoteRef: Parser[FootnoteReference] = markupStart("]_") ~> footnoteLabel <~ markupEnd("]_") ^^ 
-      { label => FootnoteReference(label, toSource(label)) }
+  lazy val footnoteRef: Parser[FootnoteReference] = positioned(markupStart("]_") ~> footnoteLabel <~ markupEnd("]_") ^^
+      { label => FootnoteReference(label, toSource(label)) })
   
   /** Parses a citation reference.
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#citation-references]].
    */
-  lazy val citationRef: Parser[CitationReference] = markupStart("]_") ~> simpleRefName <~ markupEnd("]_") ^^
-      { label => CitationReference(label, s"[$label]_") }
+  lazy val citationRef: Parser[CitationReference] = positioned(markupStart("]_") ~> simpleRefName <~ markupEnd("]_") ^^
+      { label => CitationReference(label, s"[$label]_") })
   
   /** Parses a substitution reference.
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#substitution-references]].
    */
-  lazy val substitutionRef: Parser[Reference] = markupStart("|") ~> simpleRefName >> { ref =>
+  lazy val substitutionRef: Parser[Reference] = positioned(markupStart("|") ~> simpleRefName >> { ref =>
     markupEnd("|__") ^^ { _ => LinkReference(List(SubstitutionReference(ref)), "", s"|$ref|__") } | 
     markupEnd("|_")  ^^ { _ => LinkReference(List(SubstitutionReference(ref)), ref, s"|$ref|_") } |
-    markupEnd("|")   ^^ { _ => SubstitutionReference(ref) } 
-  }
+    markupEnd("|")   ^^ { _ => SubstitutionReference(ref) }
+  })
   
   /** Parses an inline internal link target.
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#inline-internal-targets]]
    */
-  val internalTarget: Parser[Text] = markupStart('`', "`") ~> 
+  val internalTarget: Parser[Text] = positioned(markupStart('`', "`") ~>
     (escapedText(anyBut('`') min 1) ^^ ReferenceName) <~ 
-    markupEnd("`") ^^ (id => Text(id.original, Id(id.normalized) + Styles("target")))
+    markupEnd("`") ^^ (id => Text(id.original, Id(id.normalized) + Styles("target"))))
   
   /** The default text role to use when no role is specified in an interpreted text element.
    */
@@ -263,19 +263,19 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#interpreted-text]]
    */  
-  lazy val interpretedTextWithRolePrefix: Parser[InterpretedText] = {
+  lazy val interpretedTextWithRolePrefix: Parser[InterpretedText] = positioned({
     (markupStart(":") ~> simpleRefName) ~ (":`" ~> escapedText(anyBut('`') min 1) <~ markupEnd("`")) ^^ 
       { case role ~ text => InterpretedText(role,text,s":$role:`$text`") }
-  }
+  })
   
   /** Parses an interpreted text element with the role name as a suffix.
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#interpreted-text]]
    */  
-  lazy val interpretedTextWithRoleSuffix: Parser[InterpretedText] = {
+  lazy val interpretedTextWithRoleSuffix: Parser[InterpretedText] = positioned({
     (markupStart("`") ~> escapedText(anyBut('`') min 1) <~ markupEnd("`")) ~ opt(":" ~> simpleRefName <~ markupEnd(":")) ^^
       { case text ~ role => InterpretedText(role.getOrElse(defaultTextRole), text, s"`$text`" + role.map(":"+_+":").getOrElse("")) }
-  }
+  })
   
   /** Parses a phrase link reference (enclosed in back ticks).
    *  
@@ -285,13 +285,13 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
     def ref (refName: String, url: String) = if (refName.isEmpty) url else refName
     val url = '<' ~> anyBut('>') <~ '>' ^^ { _.replaceAll("[ \n]+", "") }
     val refName = escapedText(anyBut('`','<')) ^^ ReferenceName
-    markupStart("`") ~> refName ~ opt(url) ~ (markupEnd("`__") ^^^ false | markupEnd("`_") ^^^ true) ^^ {
+    positioned(markupStart("`") ~> refName ~ opt(url) ~ (markupEnd("`__") ^^^ false | markupEnd("`_") ^^^ true) ^^ {
       case refName ~ Some(url) ~ true   => 
         SpanSequence(List(ExternalLink(List(Text(ref(refName.original, url))), url), ExternalLinkDefinition(ref(refName.normalized, url), url)))
       case refName ~ Some(url) ~ false  => ExternalLink(List(Text(ref(refName.original, url))), url)
       case refName ~ None ~ true        => LinkReference(List(Text(refName.original)), refName.normalized, s"`${refName.original}`_") 
       case refName ~ None ~ false       => LinkReference(List(Text(refName.original)), "", s"`${refName.original}`__") 
-    }
+    })
   }
   
   protected case class Reverse (length: Int, target: Span, fallback: Span, options: Options = NoOpt) extends Span
@@ -300,7 +300,7 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
    *  
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#hyperlink-references]]
    */
-  lazy val simpleLinkRef: Parser[Span] = {
+  lazy val simpleLinkRef: Parser[Span] = positioned({
     markupEnd('_' ^^^ "__" | success("_")) >> { 
       markup => reverse(markup.length, simpleRefName <~ reverseMarkupStart) ^^ { refName =>
         markup match {
@@ -309,7 +309,7 @@ trait InlineParsers extends laika.parse.InlineParsers with URIParsers {
         }
       }
     } 
-  }
+  })
   
   private def reverse (offset: Int, p: => Parser[String]): Parser[String] = Parser { in =>
     val source = in.source.subSequence(0, in.offset - offset).toString.reverse

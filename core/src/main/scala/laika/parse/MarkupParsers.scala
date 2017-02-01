@@ -50,7 +50,7 @@ trait MarkupParsers extends RegexParsers with BaseParsers {
       else if (in.first == '\n') Success("", in.rest)
       else if (in.first == '\r' && in.source.length > in.offset + 1 && in.source.charAt(in.offset + 1) == '\n') Success("", in.drop(2))
       else Failure("Not at end of line", in)
-  }  
+  }
   
   /** Succeeds at the end of the input.
    */

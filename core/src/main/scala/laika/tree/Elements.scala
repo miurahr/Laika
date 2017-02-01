@@ -15,7 +15,8 @@
  */
 
 package laika.tree
- 
+
+import scala.util.parsing.input.Positional
 import laika.api.Render
 import laika.render.PrettyPrint
 import scala.math.Ordered
@@ -45,7 +46,7 @@ object Elements {
    *  `Block` should be picked as the base type for new element
    *  types.
    */
-  abstract class Element extends Product
+  abstract class Element extends Product with Positional
   
   /** An element that can be customized. Represents options
    *  that are usually only used on few selected nodes and

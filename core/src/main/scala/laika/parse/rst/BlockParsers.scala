@@ -78,20 +78,20 @@ trait BlockParsers extends laika.parse.BlockParsers
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#transitions]].
    */  
-  val transition: Parser[Rule] = (punctuationChar min 4) ~ ws ~ eol ~ guard(blankLine) ^^^ Rule()  
+  val transition: Parser[Rule] = positioned((punctuationChar min 4) ~ ws ~ eol ~ guard(blankLine) ^^^ Rule() )
     
   /** Parses a single paragraph. Everything between two blank lines that is not
    *  recognized as a special reStructuredText block type will be parsed as a regular paragraph.
    */
   def paragraph: Parser[Paragraph] = 
-      ((not(blankLine) ~> restOfLine) +) ^^ { lines => Paragraph(parseInline(lines mkString "\n")) }
+      positioned(((not(blankLine) ~> restOfLine) +) ^^ { lines => Paragraph(parseInline(lines mkString "\n")) })
   
 
   /** Parses a section header with both overline and underline.
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#sections]].
    */
-  def headerWithOverline: Parser[Block] = {
+  def headerWithOverline: Parser[Block] = positioned({
     (punctuationChar take 1) >> { start =>
       val char = start.charAt(0)
       anyOf(char) >> { deco =>
@@ -101,13 +101,13 @@ trait BlockParsers extends laika.parse.BlockParsers
          ws ~ eol) ^^ { title => DecoratedHeader(OverlineAndUnderline(char), parseInline(title.trim)) }
       }
     }
-  }
+  })
   
   /** Parses a section header with an underline, but no overline.
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#sections]].
    */
-  def headerWithUnderline: Parser[Block] = {
+  def headerWithUnderline: Parser[Block] = positioned({
     (anyBut(' ') take 1) ~ restOfLine >> { case char ~ rest =>
       val title = (char + rest).trim
       (punctuationChar take 1) >> { start =>
@@ -116,7 +116,7 @@ trait BlockParsers extends laika.parse.BlockParsers
          ws ~ eol) ^^ { _ => DecoratedHeader(Underline(char), parseInline(title)) }
       }
     }
-  }
+  })
   
   /** Parses a doctest block. This is a feature which is very specific to the
    *  world of Python where reStructuredText originates. Therefore the resulting
@@ -126,15 +126,15 @@ trait BlockParsers extends laika.parse.BlockParsers
    *  
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#doctest-blocks]]
    */
-  def doctest: Parser[Block] = ">>> " ~> restOfLine ~ 
-      ((not(blankLine) ~> restOfLine) *) ^^ { case first ~ rest => DoctestBlock((first :: rest) mkString "\n") }
+  def doctest: Parser[Block] = positioned(">>> " ~> restOfLine ~
+      ((not(blankLine) ~> restOfLine) *) ^^ { case first ~ rest => DoctestBlock((first :: rest) mkString "\n") })
   
   
   /** Parses a block quote with an optional attribution. 
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#block-quotes]]
    */
-  def blockQuote: Parser[Block] = {
+  def blockQuote: Parser[Block] = positioned({
     
     val attributionStart = "---" | "--" | '\u2014' // em dash
         
@@ -148,7 +148,7 @@ trait BlockParsers extends laika.parse.BlockParsers
         spans => QuotedBlock(parseNestedBlocks(block), spans.getOrElse(Nil)) 
       }
     }
-  }
+  })
   
   
   /** Builds a parser for a list of blocks based on the parser for a single block. 
@@ -230,17 +230,17 @@ trait BlockParsers extends laika.parse.BlockParsers
    * 
    *  See [[http://docutils.sourceforge.net/docs/ref/rst/restructuredtext.html#literal-blocks]]
    */
-  def literalBlock: Parser[Block] = {
+  def literalBlock: Parser[Block] = positioned({
     val indented = indentedBlock(firstLineIndented = true) ^^ 
       { block => LiteralBlock(block.lines mkString "\n") }
     val quoted = block(guard(punctuationChar min 1), guard(punctuationChar min 1), failure("blank line always ends quoted block")) ^^ 
       { lines => LiteralBlock(lines mkString "\n") }  
     indented | quoted
-  }
+  })
   
-  def nonRecursiveBlock: Parser[Block] = comment | paragraph
+  def nonRecursiveBlock: Parser[Block] = positioned(comment | paragraph)
   
-  protected def prepareBlockParsers (nested: Boolean): List[Parser[Block]] = 
+  protected def prepareBlockParsers (nested: Boolean): List[Parser[Block]] =
     bulletList :: 
     enumList :: 
     fieldList ::
@@ -257,6 +257,6 @@ trait BlockParsers extends laika.parse.BlockParsers
     definitionList ::
     paragraph ::
     Nil
- 
-  
+
+
 }
